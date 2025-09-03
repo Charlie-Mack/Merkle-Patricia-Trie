@@ -1,5 +1,5 @@
-use super::{Key32, NibblePath};
-use std::{array, fmt};
+use super::NibblePath;
+use std::array;
 
 //--- Node Kinds ---
 #[derive(Clone, Debug, PartialEq, Eq)]

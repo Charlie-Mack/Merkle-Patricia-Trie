@@ -1,4 +1,4 @@
-use crate::trie::node::{BranchNode, ExtensionNode, LeafNode, Node};
+use crate::trie::node::Node;
 use std::fmt;
 
 pub trait NodeDisplay {
@@ -72,7 +72,7 @@ impl NodeDisplay for Node {
             Node::Branch(branch) => {
                 println!("{}{}Branch", prefix, connector);
                 let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
-                let mut active_children: Vec<_> = branch
+                let active_children: Vec<_> = branch
                     .children
                     .iter()
                     .enumerate()
