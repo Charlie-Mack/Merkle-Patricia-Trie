@@ -5,5 +5,5 @@ pub mod trie;
 
 pub use node::{DeleteResult, Node};
 pub use path::{Key32, NibblePath};
-pub use rlp::encode_rlp;
+pub use rlp::{RlpData, encode_rlp};
 pub use trie::Trie;
