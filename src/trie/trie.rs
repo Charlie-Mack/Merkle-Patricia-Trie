@@ -1,14 +1,28 @@
 use super::{DeleteResult, Key32, NibblePath, Node};
+use crate::kv::db::{HashDB, SledDB};
+use crate::kv::storage::{NodeRef, commit_node, get_value};
 use crate::utils::display::NodeDisplay;
+use sha3::{Digest, Keccak256};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trie {
     root: Option<Node>, // None if empty, otherwise some node (Leaf/Ext/Branch)
+    db: Option<SledDB>,
 }
 
 impl Trie {
     pub fn new() -> Self {
-        Trie { root: None }
+        Trie {
+            root: None,
+            db: None,
+        }
+    }
+
+    pub fn with_db(path: impl AsRef<std::path::Path>, tree: &str) -> Self {
+        let db = SledDB::open(path, tree).expect("open sled");
+        Self {
+            root: None,
+            db: Some(db),
+        }
     }
 
     pub fn print_tree(&self) {
@@ -16,6 +30,23 @@ impl Trie {
             None => println!("Trie is empty"),
             Some(root) => root.print_tree(),
         }
+    }
+
+    pub fn commit(&mut self) -> NodeRef {
+        let db = self.db.as_mut().unwrap();
+
+        let root = match &self.root {
+            None => NodeRef::Inline(vec![]),
+            Some(n) => commit_node(db, n),
+        };
+
+        let root_key = Keccak256::digest(b"__ROOT__").into();
+
+        println!("Root Key: {:x?}", root_key);
+
+        let _ = db.put(root_key, root.canonicalize_root().to_vec());
+
+        root
     }
 
     pub fn root(&self) -> Option<&Node> {
@@ -34,12 +65,30 @@ impl Trie {
                 root.insert(key.into(), v);
             }
         }
+
+        println!("Node in memory: {:x?}", self.root);
     }
 
-    pub fn get(&self, key: Key32) -> Option<&Vec<u8>> {
+    pub fn get(&self, key: Key32) -> Option<Vec<u8>> {
+        //Do we have a db?
+        if let Some(db) = &self.db {
+            let root_key: [u8; 32] = Keccak256::digest(b"__ROOT__").into();
+            let mut root_hash = db.get(&root_key);
+
+            //here i need to say that the root hash is a [u8; 32]
+
+            if let Ok(Some(root_hash)) = root_hash {
+                let root_hash: [u8; 32] = root_hash
+                    .try_into()
+                    .expect("Root hash should always be 32 bytes");
+                get_value(db, &key.0, &root_hash);
+            }
+        }
+
+        //If we don't have a db, we just get the root from the trie
         match &self.root {
             None => None,
-            Some(root) => root.get(key.into()),
+            Some(root) => root.get(key.into()).cloned(),
         }
     }
 
@@ -170,4 +219,34 @@ mod unit_tests {
             assert!(matches!(five_child, Some(b) if matches!(**b, Node::Extension(_))));
         }
     }
+
+    #[test]
+    fn commit_trie_with_db() {
+        let mut trie = Trie::with_db("db", "mpt");
+        let key = String::from("hello").into();
+        trie.set(key, b"world");
+        let root_hash = trie.commit();
+        println!("root_hash: {}", root_hash);
+    }
+
+    // #[test]
+    // fn commit_trie_with_db_and_complex_structure() {
+    //     let mut trie = Trie::with_db("db", "mpt");
+
+    //     let keys = [
+    //         Key32(*b"j23456abcdefghijklmnopqrstuvwxyz"),
+    //         Key32(*b"523456abcdefghijklmnopqrstuvwxyz"),
+    //         Key32(*b"523456zyxwvutsrqponmlkjihgfedcba"),
+    //         Key32(*b"523abcdefghijklmnopqrstuvwxyz123"),
+    //         Key32(*b"523456q1111111111111111111111111"),
+    //     ];
+
+    //     for key in keys {
+    //         trie.set(key, b"hello");
+    //     }
+
+    //     let root_hash = trie.commit();
+
+    //     println!("root_hash: {}", root_hash);
+    // }
 }

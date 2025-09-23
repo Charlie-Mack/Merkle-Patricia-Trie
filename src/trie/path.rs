@@ -1,6 +1,14 @@
+use sha3::{Digest, Keccak256};
+
 /// 32-byte key type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Key32(pub [u8; 32]);
+
+impl From<String> for Key32 {
+    fn from(s: String) -> Self {
+        Key32(Keccak256::digest(s.as_bytes()).into())
+    }
+}
 
 /// Half-byte path representation (256 -> 16 possible values for trie sparsity)
 #[derive(Debug, Clone, PartialEq, Eq)]

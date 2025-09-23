@@ -21,7 +21,7 @@ mod api_tests {
         let key = Key32(random::<[u8; 32]>());
 
         trie.set(key, b"hello");
-        assert_eq!(trie.get(key), Some(&b"hello".to_vec()));
+        assert_eq!(trie.get(key), Some(b"hello".to_vec()));
     }
 
     #[test]
@@ -42,7 +42,7 @@ mod api_tests {
         trie.set(key, b"hello");
         trie.set(key, b"world");
 
-        assert_eq!(trie.get(key), Some(&b"world".to_vec()));
+        assert_eq!(trie.get(key), Some(b"world".to_vec()));
     }
 
     #[test]
@@ -60,8 +60,8 @@ mod api_tests {
         trie.set(key1, b"value1");
         trie.set(key2, b"value2");
 
-        assert_eq!(trie.get(key1), Some(&b"value1".to_vec()));
-        assert_eq!(trie.get(key2), Some(&b"value2".to_vec()));
+        assert_eq!(trie.get(key1), Some(b"value1".to_vec()));
+        assert_eq!(trie.get(key2), Some(b"value2".to_vec()));
     }
 
     #[test]
@@ -74,8 +74,8 @@ mod api_tests {
         trie.set(key1, b"value1");
         trie.set(key2, b"value2");
 
-        assert_eq!(trie.get(key1), Some(&b"value1".to_vec()));
-        assert_eq!(trie.get(key2), Some(&b"value2".to_vec()));
+        assert_eq!(trie.get(key1), Some(b"value1".to_vec()));
+        assert_eq!(trie.get(key2), Some(b"value2".to_vec()));
     }
 
     #[test]
@@ -112,18 +112,23 @@ mod api_tests {
 
         // Store trie states after each insertion
         let mut trie_versions = vec![];
-        trie_versions.push(trie.clone()); // Empty trie
+        trie_versions.push(trie.root().cloned()); // Empty trie
 
         // Insert all keys
         for (key, value) in keys.iter().zip(values.iter()) {
             trie.set(*key, value.to_vec());
-            trie_versions.push(trie.clone());
+            trie_versions.push(trie.root().cloned()); // Clone the Option<&Node> to Option<Node>
         }
 
         // Delete in reverse order and verify trie matches previous versions
         for i in (0..keys.len()).rev() {
             trie.delete(keys[i]);
-            assert_eq!(trie, trie_versions[i], "Failed after deleting key {}", i);
+            assert_eq!(
+                trie.root(),
+                trie_versions[i].as_ref(),
+                "Failed after deleting key {}",
+                i
+            );
         }
     }
 
@@ -144,9 +149,9 @@ mod api_tests {
 
         // Delete middle key - should keep extension but modify branch
         assert!(trie.delete(keys[1]));
-        assert_eq!(trie.get(keys[0]), Some(&b"val0".to_vec()));
+        assert_eq!(trie.get(keys[0]), Some(b"val0".to_vec()));
         assert_eq!(trie.get(keys[1]), None);
-        assert_eq!(trie.get(keys[2]), Some(&b"val2".to_vec()));
+        assert_eq!(trie.get(keys[2]), Some(b"val2".to_vec()));
     }
 
     #[test]
@@ -169,8 +174,8 @@ mod api_tests {
 
         trie.print_tree();
 
-        assert_eq!(trie.get(key1), Some(&b"val1".to_vec()));
-        assert_eq!(trie.get(key2), Some(&b"val2".to_vec()));
+        assert_eq!(trie.get(key1), Some(b"val1".to_vec()));
+        assert_eq!(trie.get(key2), Some(b"val2".to_vec()));
         assert_eq!(trie.get(key3), None);
     }
 
@@ -185,7 +190,7 @@ mod api_tests {
 
         // Should return false for non-existent key
         assert!(!trie.delete(key2));
-        assert_eq!(trie.get(key1), Some(&b"value".to_vec()));
+        assert_eq!(trie.get(key1), Some(b"value".to_vec()));
     }
 
     #[test]
@@ -205,7 +210,7 @@ mod api_tests {
 
         trie.set(key, b"hello");
 
-        assert_eq!(trie.get(key), Some(&b"hello".to_vec()));
+        assert_eq!(trie.get(key), Some(b"hello".to_vec()));
         assert_eq!(trie.get(bad_key), None);
     }
 
@@ -231,8 +236,12 @@ mod api_tests {
 
         // Verify all keys can be retrieved
         for (key, value) in keys.iter().zip(values.iter()) {
-            assert_eq!(trie.get(*key), Some(&value.to_vec()));
+            assert_eq!(trie.get(*key), Some(value.to_vec()));
         }
+
+        trie.print_tree();
+
+        println!("root: {:?}", trie.root().unwrap());
 
         // Verify non-existent key returns None
         let bad_key = Key32(*b"999999abcdefghijklmnopqrstuvwxyz");
@@ -255,8 +264,67 @@ mod api_tests {
         trie.set(key3, b"third");
 
         // All keys should be retrievable
-        assert_eq!(trie.get(key1), Some(&b"first".to_vec()));
-        assert_eq!(trie.get(key2), Some(&b"second".to_vec()));
-        assert_eq!(trie.get(key3), Some(&b"third".to_vec()));
+        assert_eq!(trie.get(key1), Some(b"first".to_vec()));
+        assert_eq!(trie.get(key2), Some(b"second".to_vec()));
+        assert_eq!(trie.get(key3), Some(b"third".to_vec()));
     }
+
+    #[test]
+    fn complex_trie_operations_with_db() {
+        let mut trie = Trie::with_db("db", "mpt");
+
+        // This test builds a complex trie structure with branches and extensions
+        let keys = [
+            Key32(*b"j23456abcdefghijklmnopqrstuvwxyz"),
+            Key32(*b"523456abcdefghijklmnopqrstuvwxyz"),
+            Key32(*b"523456zyxwvutsrqponmlkjihgfedcba"),
+            Key32(*b"523abcdefghijklmnopqrstuvwxyz123"),
+            Key32(*b"523456q1111111111111111111111111"),
+        ];
+
+        let values = [b"val1", b"val2", b"val3", b"val4", b"val5"];
+
+        // Insert all keys
+        for (key, value) in keys.iter().zip(values.iter()) {
+            trie.set(*key, value.to_vec());
+        }
+
+        // Verify all keys can be retrieved
+        for (key, value) in keys.iter().zip(values.iter()) {
+            assert_eq!(trie.get(*key), Some(value.to_vec()));
+        }
+
+        trie.commit();
+
+        let value = trie.get(keys[2]);
+        println!(
+            "value: {:?}",
+            String::from_utf8(value.clone().unwrap()).unwrap()
+        );
+        assert_eq!(value, Some(b"val3".to_vec()));
+    }
+
+    #[test]
+    fn commit_trie_with_db() {
+        let mut trie = Trie::with_db("db", "mpt");
+        let key = String::from("hello").into();
+        println!("key: {:x?}", key);
+        trie.set(key, b"world");
+
+        trie.commit();
+
+        println!("\n\n NOW WE GET THE VALUE FROM THE DB \n\n");
+
+        //Now we get the value from the db
+        let value = trie.get(key);
+        println!("value: {:?}", value);
+    }
+
+    // #[test]
+    // fn get_trie_with_db() {
+    //     let trie = Trie::with_db("db", "mpt");
+    //     let key = String::from("hello").into();
+    //     let value = trie.get(key);
+    //     assert_eq!(value, Some(b"world".to_vec()));
+    // }
 }

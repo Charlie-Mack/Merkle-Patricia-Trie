@@ -234,6 +234,10 @@ pub fn encode_rlp(data: &RlpData) -> Vec<u8> {
                 payload.extend(encode_rlp(item));
             }
 
+            println!("Payload after encoding: {:x?}", payload);
+
+            println!("Length of payload: {}", payload.len());
+
             // Then prepend the length
             let mut encoded = encode_length(payload.len(), 0xc0);
             encoded.extend(payload);

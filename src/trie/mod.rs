@@ -1,9 +1,7 @@
 pub mod node;
 pub mod path;
-pub mod rlp;
 pub mod trie;
 
-pub use node::{DeleteResult, Node};
+pub use node::{BranchNode, DeleteResult, ExtensionNode, LeafNode, Node};
 pub use path::{Key32, NibblePath};
-pub use rlp::{RlpData, encode_rlp};
 pub use trie::Trie;

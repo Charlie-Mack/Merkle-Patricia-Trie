@@ -149,23 +149,30 @@ impl LeafNode {
         //old side (existing leaf)
         let old_rem = &a[k..];
 
-        branch.add_leaf(
-            old_rem[0] as usize,
-            NibblePath {
-                nibbles: old_rem[1..].to_vec(),
-            },
-            self.value.clone(),
-        );
+        if old_rem.is_empty() {
+            branch.value = Some(self.value.clone());
+        } else {
+            branch.add_leaf(
+                old_rem[0] as usize,
+                NibblePath {
+                    nibbles: old_rem[1..].to_vec(),
+                },
+                self.value.clone(),
+            );
+        }
 
         let new_rem = &b[k..];
-
-        branch.add_leaf(
-            new_rem[0] as usize,
-            NibblePath {
-                nibbles: new_rem[1..].to_vec(),
-            },
-            value,
-        );
+        if new_rem.is_empty() {
+            branch.value = Some(value);
+        } else {
+            branch.add_leaf(
+                new_rem[0] as usize,
+                NibblePath {
+                    nibbles: new_rem[1..].to_vec(),
+                },
+                value,
+            );
+        }
 
         if k > 0 {
             let ext = ExtensionNode::new(
@@ -183,12 +190,20 @@ impl LeafNode {
 }
 
 impl Node {
-    fn dummy() -> Self {
+    pub fn dummy() -> Self {
         Node::Branch(BranchNode::new())
     }
 
     pub fn new_leaf(path: NibblePath, value: Vec<u8>) -> Self {
         Node::Leaf(LeafNode::new(path, value))
+    }
+
+    pub fn path(&self) -> Option<&NibblePath> {
+        match self {
+            Node::Leaf(leaf) => Some(&leaf.path),
+            Node::Extension(ext) => Some(&ext.path),
+            Node::Branch(_) => None,
+        }
     }
 
     pub fn delete(&mut self, path: NibblePath) -> DeleteResult {
@@ -198,6 +213,11 @@ impl Node {
             }
 
             Node::Branch(branch) => {
+                if path.nibbles.is_empty() {
+                    branch.value = None;
+                    return try_collapse_branch(branch);
+                }
+
                 let child_opt = &mut branch.children[path.nibbles[0] as usize];
 
                 if let Some(child) = child_opt {
@@ -286,7 +306,11 @@ impl Node {
 
         match self {
             Node::Leaf(leaf) => {
+                println!("We matched with a leaf so just get the value if the key is the same");
+                println!("leaf.path: {:x?}", leaf.path);
+                println!("path: {:x?}", path);
                 if leaf.path == path {
+                    print!("WE matched");
                     Some(&leaf.value)
                 } else {
                     None
@@ -294,7 +318,9 @@ impl Node {
             }
             Node::Extension(ext) => {
                 //If we are extension lets match the path to the extension path
-                if ext.path.nibbles == path.nibbles[..ext.path.nibbles.len()] {
+                if path.nibbles.len() >= ext.path.nibbles.len()
+                    && ext.path.nibbles == path.nibbles[..ext.path.nibbles.len()]
+                {
                     //We have a match, so we need to follow the extension to the next node
 
                     let rem_path = NibblePath {
@@ -307,6 +333,10 @@ impl Node {
                 }
             }
             Node::Branch(branch) => {
+                if path.nibbles.is_empty() {
+                    return branch.value.as_ref(); // for get()
+                }
+
                 let child_opt = &branch.children[path.nibbles[0] as usize];
 
                 if let Some(child) = child_opt {
